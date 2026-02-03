@@ -94,44 +94,50 @@ impl<'info> Take<'info> {
         Ok(())
     }
 
-     pub fn tranfer_token_a(&self) -> Result<()> {
-         let ctx = CpiContext::new(
-             self.token_program.to_account_info(),
-             TransferChecked {
-                 from: self.vault.to_account_info(),
-                 mint: self.mint_a.to_account_info(),
-                 to: self.taker_ata_a.to_account_info(),
-                 authority: self.escrow.to_account_info(),
-             });
-
-        transfer_checked(ctx, self.vault.amount, self.mint_a.decimals)?;
-        Ok(())
-    }
-
-    pub fn take(ctx: Context<Take>) -> Result<()> {
-        // Send Tokens type(B) to Maker
-        ctx.accounts.transfer_token_b()?;
-
-         //Send Tokens type(A) to Taker
-         ctx.accounts.tranfer_token_a()?;
-
-        //Close the accounts
+    pub fn take(&self) -> Result<()> {
         let signer_seeds: &[&[&[u8]]] = &[&[
             b"escrow",
-            ctx.accounts.maker.to_account_info().key.as_ref(),
-            &ctx.accounts.escrow.seed.to_le_bytes(),
-            &[ctx.accounts.escrow.bump],
+            self.maker.to_account_info().key.as_ref(),
+            &self.escrow.seed.to_le_bytes(),
+            &[self.escrow.bump],
         ]];
-        let close_ctx = CpiContext::new_with_signer(
-            ctx.accounts.token_program.to_account_info(),
-            CloseAccount {
-                account: ctx.accounts.vault.to_account_info(),
-                destination: ctx.accounts.maker.to_account_info(),
-                authority: ctx.accounts.escrow.to_account_info(),
-            },
-            signer_seeds,
-        );
+        
+        // Send Tokens type(B) to Maker
+    let ctx = CpiContext::new(
+        self.token_program.to_account_info(),
+        TransferChecked {
+            from: self.taker_ata_b.to_account_info(),
+            mint: self.mint_b.to_account_info(),
+            to: self.maker_ata_b.to_account_info(),
+            authority: self.taker.to_account_info(),
+        },
+    );
+    transfer_checked(ctx, self.escrow.receive, self.mint_b.decimals)?;
+    
 
+         //Send Tokens type(A) to Taker
+    let ctx = CpiContext::new_with_signer(
+        self.token_program.to_account_info(),
+        TransferChecked {
+            from: self.vault.to_account_info(),
+            mint: self.mint_a.to_account_info(),
+            to: self.taker_ata_a.to_account_info(),
+            authority: self.escrow.to_account_info(),
+        },
+        signer_seeds
+    );
+    transfer_checked(ctx, self.vault.amount, self.mint_a.decimals)?;
+
+        //Close the accounts
+    let close_ctx = CpiContext::new_with_signer(
+        self.token_program.to_account_info(),
+        CloseAccount {
+            account: self.vault.to_account_info(),
+            destination: self.maker.to_account_info(),
+            authority: self.escrow.to_account_info(),
+        },
+        signer_seeds,
+    );
         close_account(close_ctx)?;
         Ok(())
     }
